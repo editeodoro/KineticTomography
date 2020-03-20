@@ -1,0 +1,14 @@
+*.pdf
+*.fits
+*.so
+*.o
+*.pyc
+data/
+DIB/
+__pycache__/
+testing/
+wcs_defs.py
+shape_ops.py
+reid14.cat
+gaussian_decomp_ok.py
+gaussian_decomp_old.py
