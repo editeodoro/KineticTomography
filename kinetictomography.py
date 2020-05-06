@@ -137,7 +137,7 @@ class KineticTomography(object):
         #w.wcs.cunit = ['deg', 'deg', 'mag', 'km/s']
         
         # Selecting a sub-region if requested
-        l_idx = b_idx = v_idx = [None, None]
+        l_idx = b_idx = v_idx = d_idx = [None, None]
         select = (lrange is not None) or (brange is not None) or (vrange is not None)
         if select:
             if lrange is not None:
@@ -154,8 +154,17 @@ class KineticTomography(object):
                 if b_idx.size==1: b_idx = [int(b_idx),int(b_idx)]
                 else: b_idx = np.sort(b_idx)
                 b_idx[1] += 1 
-                w.wcs.crval[1] = w.wcs_pix2world(0,b_idx[0],0,0,0)[1]
-                w.wcs.crpix[1] = 1
+                #w.wcs.crval[1] = w.wcs_pix2world(0,b_idx[0],0,0,0)[1]
+                w.wcs.crpix[1] -= b_idx[0]
+            if drange is not None:
+                drangemod = mco.distance_to_distmod(drange)
+                d_idx = np.round((drangemod-w.wcs.crval[2])/w.wcs.cdelt[2]+(w.wcs.crpix[2]-1)).astype('int') 
+                if d_idx.size==1: d_idx = [int(d_idx),int(d_idx)]
+                else: d_idx = np.sort(d_idx)
+                if drange[0]==0: d_idx[0] = 0
+                d_idx[1] += 1
+                w.wcs.crval[2] = w.wcs_pix2world(0,0,d_idx[0],0,0)[2]
+                w.wcs.crpix[2] = 1
             if vrange is not None:
                 v_idx = np.round((vrange-w.wcs.crval[3])/w.wcs.cdelt[3]+(w.wcs.crpix[3]-1)).astype('int') 
                 #v_idx = (w.wcs_world2pix(0,0,0,vrange,0)[3]).astype(np.int)
@@ -164,7 +173,8 @@ class KineticTomography(object):
                 v_idx[1] += 1
                 w.wcs.crval[3] = w.wcs_pix2world(0,0,0,v_idx[0],0)[3]
                 w.wcs.crpix[3] = 1
-
+            
+                
         # Opening CO data-cube (LON,LAT,VELO)
         with fits.open(COcube) as f_CO:
             gas_cube = f_CO[0].data[v_idx[0]:v_idx[1],b_idx[0]:b_idx[1],l_idx[0]:l_idx[1]]
@@ -184,7 +194,7 @@ class KineticTomography(object):
         # converting to column using the conversion factor in Peek+13
         with fits.open(EBVcube) as f_EBV:
             h_EBV =  f_EBV[0].header
-            dust_cube = 70*f_EBV[0].data[:,b_idx[0]:b_idx[1],l_idx[0]:l_idx[1]]  # N_H in 1E20 cm^-2
+            dust_cube = 70*f_EBV[0].data[d_idx[0]:d_idx[1],b_idx[0]:b_idx[1],l_idx[0]:l_idx[1]]  # N_H in 1E20 cm^-2
 
         # Ordering axis such that (LONG, LAT, VELO)
         self.gas_cube  = gas_cube.swapaxes(0,2)
@@ -239,7 +249,7 @@ class KineticTomography(object):
         self.bounds = cen_bounds
         self.bounds.extend(sd_bounds)
         
-        # v_model is a 1d vector containing initial vlsr and disp (2 km/s)
+        # v_model is a 1d vector containing initial vlsr and disp
         self.v_model = np.zeros(self.N_model)
         self.v_model[0:self.N_cells] = vlsrs.ravel()
         self.v_model[self.N_cells:] += sd
@@ -257,7 +267,6 @@ class KineticTomography(object):
                                   np.ravel(dust_cube.astype(np.double)),
                                   np.ravel(gas_cube.astype(np.double)),
                                   grad,self.smooth,nthreads,regularize)
-        print (objf,grad)
         return (objf,grad)
     
     
@@ -346,6 +355,7 @@ class KineticTomography(object):
             done = (total_iter >= maxiter) | (output['status']!=1) 
             print (" iter=%s/%s fun=%s"%(total_iter,maxiter,output['fun']))
             if output['status']==0: print ("Convergence achieved!!")
+            elif output['status']!=1: print (output)
             # Saving partial results if requested
             if save_every is not None:
                 #self.v_model.dump(save_name)
@@ -396,7 +406,18 @@ class KineticTomography(object):
         """ Saving vlsr model to a file """
         if 'fits' in ftype.lower():
             array = self.v_model[:self.N_cells].reshape([self.N_l,self.N_b,self.N_d]).swapaxes(0,2)
-            fits.writeto(fname,array.astype(np.float32),self.wcs.to_header(),overwrite=True)
+            head  = self.wcs.to_header()
+            head['BUNIT'] = "km/s"
+            head['BTYPE'] = "VRAD"
+            head['WCSAXES'] = 3
+            del head['LATPOLE']
+            del head['LONPOLE']
+            del head['CRPIX4']
+            del head['CDELT4']
+            del head['CRVAL4']
+            del head['CTYPE4']
+            del head['CUNIT4']
+            fits.writeto(fname,array.astype(np.float32),head,overwrite=True)
         else:
             self.v_model.reshape([2, self.N_l, self.N_b, self.N_d]).dump(fname)
     
