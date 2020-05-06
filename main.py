@@ -27,7 +27,7 @@ if __name__ == '__main__':
     kt.initialize_model(ic=restart,smooth=1E-02,max_dv=35.,sd=8.,max_sd=15.,RSun=Rsun,VSun=Vsun,falloff=0)
     
     # Fitting velocities
-    kt.run_mu(nthreads=nthreads, save_every=10, maxiter=10,C_func=True,regularize=True)
+    kt.run_mu(nthreads=nthreads, save_every=10, maxiter=500,C_func=True,regularize=True)
     #kt.run_per_single(save_every=500,C_func=True)
     
     # Save best fit model
